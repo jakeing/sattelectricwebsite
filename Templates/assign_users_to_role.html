@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assign Users to {{ role.name }} - Worker Roles</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                <h2><i class="fas fa-users"></i> Assign Users to Role: {{ role.name }}</h2>
+                <p class="text-muted">Hourly Rate: ${{ "%.2f"|format(role.hourly_rate) }}/hour</p>
+                
+                <div class="mb-3">
+                    <a href="{{ url_for('admin_edit_rate') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> Back to Roles Management
+                    </a>
+                </div>
+                
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-info alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <div class="row">
+                    <!-- Left Column: Assign/Unassign Users -->
+                    <div class="col-md-6">
+                        <!-- Currently Assigned Users -->
+                        <div class="card mb-4">
+                            <div class="card-header bg-success text-white">
+                                <h5><i class="fas fa-check-circle"></i> Currently Assigned Users ({{ assigned_users|length }})</h5>
+                            </div>
+                            <div class="card-body">
+                                {% if assigned_users %}
+                                    <form id="unassignForm">
+                                        <input type="hidden" name="role_id" value="{{ role.id }}">
+                                        <input type="hidden" name="action" value="unassign">
+                                        
+                                        <div class="mb-3">
+                                            <button type="button" class="btn btn-warning btn-sm" onclick="selectAll('assigned')">
+                                                <i class="fas fa-check-square"></i> Select All
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearAll('assigned')">
+                                                <i class="fas fa-square"></i> Clear All
+                                            </button>
+                                        </div>
+                                        
+                                        <div class="user-list" style="max-height: 400px; overflow-y: auto;">
+                                            {% for user in assigned_users %}
+                                                <div class="form-check mb-2">
+                                                    <input class="form-check-input assigned-user" type="checkbox" 
+                                                           name="user_ids" value="{{ user.id }}" 
+                                                           id="assigned-{{ user.id }}">
+                                                    <label class="form-check-label" for="assigned-{{ user.id }}">
+                                                        <strong>{{ user.full_name or user.username }}</strong>
+                                                        {% if user.full_name and user.username != user.full_name %}
+                                                            <small class="text-muted">({{ user.username }})</small>
+                                                        {% endif %}
+                                                    </label>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                        
+                                        <div class="mt-3">
+                                            <button type="submit" class="btn btn-warning">
+                                                <i class="fas fa-user-minus"></i> Unassign Selected Users
+                                            </button>
+                                        </div>
+                                    </form>
+                                {% else %}
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle"></i> No users currently assigned to this role.
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <!-- Available Users to Assign -->
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <h5><i class="fas fa-user-plus"></i> Available Users ({{ unassigned_users|length }})</h5>
+                            </div>
+                            <div class="card-body">
+                                {% if unassigned_users %}
+                                    <form id="assignForm">
+                                        <input type="hidden" name="role_id" value="{{ role.id }}">
+                                        <input type="hidden" name="action" value="assign">
+                                        
+                                        <div class="mb-3">
+                                            <button type="button" class="btn btn-primary btn-sm" onclick="selectAll('unassigned')">
+                                                <i class="fas fa-check-square"></i> Select All
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearAll('unassigned')">
+                                                <i class="fas fa-square"></i> Clear All
+                                            </button>
+                                        </div>
+                                        
+                                        <div class="user-list" style="max-height: 400px; overflow-y: auto;">
+                                            {% for user in unassigned_users %}
+                                                <div class="form-check mb-2">
+                                                    <input class="form-check-input unassigned-user" type="checkbox" 
+                                                           name="user_ids" value="{{ user.id }}" 
+                                                           id="unassigned-{{ user.id }}">
+                                                    <label class="form-check-label" for="unassigned-{{ user.id }}">
+                                                        <strong>{{ user.full_name or user.username }}</strong>
+                                                        {% if user.full_name and user.username != user.full_name %}
+                                                            <small class="text-muted">({{ user.username }})</small>
+                                                        {% endif %}
+                                                        {% if user.has_worker_role_field %}
+                                                            {% for check_role in all_roles %}
+                                                                {% if check_role.id == user.worker_role_id %}
+                                                                    <span class="badge bg-secondary">{{ check_role.name }}</span>
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        {% else %}
+                                                            <span class="badge bg-light text-dark">No Role</span>
+                                                        {% endif %}
+                                                    </label>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                        
+                                        <div class="mt-3">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-user-plus"></i> Assign Selected Users
+                                            </button>
+                                        </div>
+                                    </form>
+                                {% else %}
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle"></i> All users are already assigned to roles.
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Column: Role Overview -->
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-info text-white">
+                                <h5><i class="fas fa-list"></i> All Roles Overview</h5>
+                            </div>
+                            <div class="card-body">
+                                <div style="max-height: 800px; overflow-y: auto;">
+                                    {% for role_id, assignment in role_assignments.items() %}
+                                        <div class="mb-4">
+                                            <h6 class="border-bottom pb-2">
+                                                <i class="fas fa-briefcase"></i> 
+                                                {{ assignment.role.name }}
+                                                <small class="text-muted">(${{ "%.2f"|format(assignment.role.hourly_rate) }}/hr)</small>
+                                                <span class="badge bg-primary">{{ assignment.users|length }} users</span>
+                                                {% if assignment.role.id == role.id %}
+                                                    <span class="badge bg-warning">Current Role</span>
+                                                {% endif %}
+                                            </h6>
+                                            
+                                            {% if assignment.users %}
+                                                <div class="ps-3">
+                                                    {% for user in assignment.users %}
+                                                        <div class="mb-1">
+                                                            <i class="fas fa-user text-muted"></i>
+                                                            {{ user.full_name or user.username }}
+                                                            {% if user.full_name and user.username != user.full_name %}
+                                                                <small class="text-muted">({{ user.username }})</small>
+                                                            {% endif %}
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% else %}
+                                                <div class="ps-3 text-muted">
+                                                    <small><i class="fas fa-info-circle"></i> No users assigned</small>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Handle assign form submission
+        document.getElementById('assignForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const checkedUsers = document.querySelectorAll('.unassigned-user:checked');
+            
+            if (checkedUsers.length === 0) {
+                showAlert('Please select at least one user to assign.', 'warning');
+                return;
+            }
+            
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Assigning...';
+            submitBtn.disabled = true;
+            
+            fetch('{{ url_for("bulk_assign_users") }}', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showAlert('Error: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('An error occurred while assigning users.', 'danger');
+            })
+            .finally(() => {
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            });
+        });
+        
+        // Handle unassign form submission
+        document.getElementById('unassignForm')?.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const checkedUsers = document.querySelectorAll('.assigned-user:checked');
+            
+            if (checkedUsers.length === 0) {
+                showAlert('Please select at least one user to unassign.', 'warning');
+                return;
+            }
+            
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Unassigning...';
+            submitBtn.disabled = true;
+            
+            fetch('{{ url_for("bulk_assign_users") }}', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showAlert('Error: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('An error occurred while unassigning users.', 'danger');
+            })
+            .finally(() => {
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            });
+        });
+        
+        // Select/Clear all functions
+        function selectAll(type) {
+            const checkboxes = document.querySelectorAll(`.${type}-user`);
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        }
+        
+        function clearAll(type) {
+            const checkboxes = document.querySelectorAll(`.${type}-user`);
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        }
+        
+        // Show alert function
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            const container = document.querySelector('.container');
+            container.insertBefore(alertDiv, container.children[1]);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

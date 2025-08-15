@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accounting - Work Order System</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .summary-card {
+            background: linear-gradient(135deg, #000000 0%, #000000 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .cost-highlight {
+            background-color: #e8f5e8;
+            font-weight: bold;
+        }
+        .engineer-breakdown {
+            font-size: 0.9em;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 8px;
+            margin: 5px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .table-hover tbody tr:hover {
+            background-color: rgba(0,123,255,0.1);
+        }
+        .filter-section {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .status-badge {
+            font-size: 0.8em;
+            padding: 4px 8px;
+        }
+        .pagination-info {
+            margin: 10px 0;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-tools"></i> Work Orders
+            </a>
+            <div class="navbar-nav">
+                <a class="nav-link" href="{{ url_for('index') }}">Open Orders</a>
+                <a class="nav-link" href="{{ url_for('completed_work_orders') }}">Completed</a>
+                <a class="nav-link" href="{{ url_for('closed_work_orders') }}">Closed</a>
+                <a class="nav-link" href="{{ url_for('projects') }}">Projects</a>
+                <a class="nav-link active" href="{{ url_for('accounting') }}">
+                    <i class="fas fa-calculator"></i> Accounting
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h2><i class="fas fa-calculator"></i> Accounting Overview</h2>
+                
+                <!-- Error Message -->
+                {% if error_message %}
+                <div class="error-message">
+                    <i class="fas fa-exclamation-triangle"></i> {{ error_message }}
+                </div>
+                {% endif %}
+                
+                <!-- Summary Statistics -->
+                <div class="summary-card">
+                    <div class="row justify-content-center">
+                        <div class="col-md-3 text-center">
+                            <h4>{{ summary_stats.total_work_orders }}</h4>
+                            <small>Total Work Orders</small>
+                        </div>
+                        <div class="col-md-2 text-center">
+                            <h4>{{ summary_stats.open_count }}</h4>
+                            <small>Open</small>
+                        </div>
+                        <div class="col-md-2 text-center">
+                            <h4>{{ summary_stats.completed_count }}</h4>
+                            <small>Completed</small>
+                        </div>
+                        <div class="col-md-2 text-center">
+                            <h4>{{ summary_stats.closed_count }}</h4>
+                            <small>Closed</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filters and Controls -->
+                <div class="filter-section">
+                    <form method="GET" class="row g-3 align-items-end" id="filterForm">
+                        <div class="col-md-2">
+                            <label for="status" class="form-label">Filter by Status:</label>
+                            <select class="form-select" id="status" name="status">
+                                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+                                <option value="Open" {% if status_filter == 'Open' %}selected{% endif %}>Open</option>
+                                <option value="Complete" {% if status_filter == 'Complete' %}selected{% endif %}>Complete</option>
+                                <option value="Closed" {% if status_filter == 'Closed' %}selected{% endif %}>Closed</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="sort_by" class="form-label">Sort by:</label>
+                            <select class="form-select" id="sort_by" name="sort_by">
+                                <option value="id" {% if sort_by == 'id' %}selected{% endif %}>Work Order ID</option>
+                                <option value="rmj_job_number" {% if sort_by == 'rmj_job_number' %}selected{% endif %}>Job #</option>
+                                <option value="customer_work_order_number" {% if sort_by == 'customer_work_order_number' %}selected{% endif %}>Customer WO#</option>
+                                <option value="status" {% if sort_by == 'status' %}selected{% endif %}>Status</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="order" class="form-label">Order:</label>
+                            <select class="form-select" id="order" name="order">
+                                <option value="asc" {% if order == 'asc' %}selected{% endif %}>Ascending</option>
+                                <option value="desc" {% if order == 'desc' %}selected{% endif %}>Descending</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="per_page" class="form-label">Per Page:</label>
+                            <select class="form-select" id="per_page" name="per_page">
+                                <option value="25" {% if request.args.get('per_page', '50') == '25' %}selected{% endif %}>25</option>
+                                <option value="50" {% if request.args.get('per_page', '50') == '50' %}selected{% endif %}>50</option>
+                                <option value="100" {% if request.args.get('per_page', '50') == '100' %}selected{% endif %}>100</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-filter"></i> Apply Filters
+                            </button>
+                        </div>
+                        <div class="col-md-2">
+                            <a href="{{ url_for('export_accounting', status=status_filter) }}" class="btn btn-success">
+                                <i class="fas fa-download"></i> Export Excel
+                            </a>
+                        </div>
+                        <!-- Keep current page when filtering -->
+                        <input type="hidden" name="page" value="{{ request.args.get('page', 1) }}">
+                    </form>
+                </div>
+
+                <!-- Loading Spinner -->
+                <div class="loading-spinner" id="loadingSpinner">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Loading accounting data...</p>
+                </div>
+
+                <!-- Pagination Info -->
+                {% if pagination %}
+                <div class="pagination-info">
+                    Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to 
+                    {{ pagination.page * pagination.per_page if pagination.page * pagination.per_page < pagination.total else pagination.total }} 
+                    of {{ pagination.total }} work orders
+                </div>
+                {% endif %}
+
+                <!-- Work Orders Table -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-list"></i> Work Orders with Cost Analysis</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if work_orders %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Customer WO#</th>
+                                        <th>Job#</th>
+                                        <th>Description</th>
+                                        <th>Status</th>
+                                        <th>Owner</th>
+                                        <th>Total Hours</th>
+                                        <th>Total Cost</th>
+                                        <th>Project Cost</th>
+                                        <th>Profit</th>
+                                        <th>Engineer Breakdown</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for work_order in work_orders %}
+                                    <tr>
+                                        <td>{{ work_order.id }}</td>
+                                        <td>{{ work_order.customer_work_order_number or '-' }}</td>
+                                        <td>
+                                            <a href="{{ url_for('work_order_detail', work_order_id=work_order.id) }}" class="text-decoration-none">
+                                                {{ work_order.rmj_job_number }}
+                                            </a>
+                                        </td>
+                                        <td>
+                                            {% set desc = work_order.description[:30] %}
+                                            {{ desc }}{% if work_order.description|length > 30 %}...{% endif %}
+                                        </td>
+                                        <td>
+                                            {% if work_order.status == 'Open' %}
+                                                <span class="badge bg-primary status-badge">{{ work_order.status }}</span>
+                                            {% elif work_order.status == 'Complete' %}
+                                                <span class="badge bg-success status-badge">{{ work_order.status }}</span>
+                                            {% elif work_order.status == 'Closed' %}
+                                                <span class="badge bg-secondary status-badge">{{ work_order.status }}</span>
+                                            {% else %}
+                                                <span class="badge bg-warning status-badge">{{ work_order.status }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ work_order.owner or '-' }}</td>
+                                        <td class="text-end">{{ "%.1f"|format(work_order.total_hours) }}</td>
+                                        <td class="text-end cost-highlight">${{ "%.2f"|format(work_order.total_cost) }}</td>
+                                        <td class="text-end">
+                                            <input type="number" 
+                                                class="form-control project-cost-input" 
+                                                value="{{ work_order.project_cost or 0 }}" 
+                                                data-work-order-id="{{ work_order.id }}"
+                                                style="width: 100px;"
+                                                step="0.01"
+                                                min="0">
+                                        </td>
+                                        <td class="text-end">
+                                            {% set profit = (work_order.project_cost or 0) - work_order.total_cost %}
+                                            {% set profit_pct = (profit / (work_order.project_cost or 1) * 100) if work_order.project_cost > 0 else 0 %}
+                                            <span class="profit-display" style="color: {{ 'green' if profit > 0 else 'red' if profit < 0 else 'gray' }};">
+                                                ${{ "%.2f"|format(profit) }}<br>
+                                                <small>({{ "%.1f"|format(profit_pct) }}%)</small>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if work_order.engineer_breakdown %}
+                                            <div class="engineer-breakdown">
+                                                {% for engineer, data in work_order.engineer_breakdown.items() %}
+                                                <div class="mb-1">
+                                                    <strong>{{ engineer }}:</strong> 
+                                                    {{ "%.1f"|format(data.hours) }}h = 
+                                                    <span class="text-success">${{ "%.2f"|format(data.cost) }}</span>
+                                                </div>
+                                                {% endfor %}
+                                            </div>
+                                            {% else %}
+                                            <small class="text-muted">No time entries</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group-vertical btn-group-sm">
+                                                <a href="{{ url_for('accounting_work_order_detail', work_order_id=work_order.id) }}" 
+                                                   class="btn btn-outline-info btn-sm">
+                                                    <i class="fas fa-eye"></i> Details
+                                                </a>
+                                                <a href="{{ url_for('work_order_detail', work_order_id=work_order.id) }}" 
+                                                   class="btn btn-outline-primary btn-sm">
+                                                    <i class="fas fa-edit"></i> Edit
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-inbox fa-3x mb-3"></i>
+                            <p>No work orders found with the current filters.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Pagination -->
+                {% if pagination and pagination.pages > 1 %}
+                <nav aria-label="Work orders pagination" class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        {% if pagination.has_prev %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('accounting', 
+                                page=pagination.prev_num, 
+                                status=status_filter, 
+                                sort_by=sort_by, 
+                                order=order,
+                                per_page=request.args.get('per_page', 50)) }}">Previous</a>
+                        </li>
+                        {% endif %}
+                        
+                        {% for page_num in pagination.iter_pages() %}
+                            {% if page_num %}
+                                {% if page_num != pagination.page %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('accounting', 
+                                        page=page_num, 
+                                        status=status_filter, 
+                                        sort_by=sort_by, 
+                                        order=order,
+                                        per_page=request.args.get('per_page', 50)) }}">{{ page_num }}</a>
+                                </li>
+                                {% else %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ page_num }}</span>
+                                </li>
+                                {% endif %}
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if pagination.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('accounting', 
+                                page=pagination.next_num, 
+                                status=status_filter, 
+                                sort_by=sort_by, 
+                                order=order,
+                                per_page=request.args.get('per_page', 50)) }}">Next</a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+
+                <!-- Engineer Rate Summary (Collapsed by default to improve performance) -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5>
+                            <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#ratesSummary">
+                                <i class="fas fa-users"></i> Engineer Hourly Rates
+                            </button>
+                        </h5>
+                    </div>
+                    <div class="collapse" id="ratesSummary">
+                        <div class="card-body">
+                            <div class="row">
+                                {% for engineer, rate in user_rates.items() %}
+                                <div class="col-md-3 mb-2">
+                                    <div class="card">
+                                        <div class="card-body text-center py-2">
+                                            <h6 class="card-title">{{ engineer }}</h6>
+                                            <p class="card-text">
+                                                {% if rate > 0 %}
+                                                    <span class="h6 text-success">${{ "%.2f"|format(rate) }}/hr</span>
+                                                {% else %}
+                                                    <span class="text-muted">No rate set</span>
+                                                {% endif %}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="mt-3">
+                                <a href="{{ url_for('admin_edit_rate') }}" class="btn btn-warning">
+                                    <i class="fas fa-edit"></i> Manage Engineer Rates
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Improved cost update handling with debouncing
+        const costInputs = document.querySelectorAll('.project-cost-input');
+        let updateTimeout;
+        
+        costInputs.forEach(input => {
+            // Store original value
+            input.dataset.originalValue = input.value;
+            
+            input.addEventListener('blur', function() {
+                updateProjectCost(this);
+            });
+            
+            // Also handle Enter key
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    this.blur();
+                }
+            });
+        });
+        
+        function updateProjectCost(input) {
+            const workOrderId = input.getAttribute('data-work-order-id');
+            const newCost = input.value;
+            const originalValue = input.dataset.originalValue;
+            
+            // Only update if value actually changed
+            if (newCost === originalValue) {
+                return;
+            }
+            
+            // Show loading state
+            input.style.backgroundColor = '#fff3cd';
+            input.disabled = true;
+            
+            // Clear any existing timeout
+            clearTimeout(updateTimeout);
+            
+            // Debounce the update
+            updateTimeout = setTimeout(() => {
+                const formData = new FormData();
+                formData.append('project_cost', newCost);
+                
+                fetch(`/accounting/update_cost/${workOrderId}`, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update the profit display without full page reload
+                        updateProfitDisplay(workOrderId, newCost);
+                        input.style.backgroundColor = '#d1edff';
+                        input.dataset.originalValue = newCost;
+                        
+                        // Reset style after a moment
+                        setTimeout(() => {
+                            input.style.backgroundColor = '';
+                        }, 1000);
+                    } else {
+                        alert('Error updating cost: ' + (data.error || 'Unknown error'));
+                        input.value = originalValue; // Revert to original value
+                        input.style.backgroundColor = '#f8d7da';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error updating cost');
+                    input.value = originalValue; // Revert to original value
+                    input.style.backgroundColor = '#f8d7da';
+                })
+                .finally(() => {
+                    input.disabled = false;
+                });
+            }, 500); // 500ms debounce
+        }
+        
+        function updateProfitDisplay(workOrderId, projectCost) {
+            // Find the corresponding row and update profit display
+            const input = document.querySelector(`input[data-work-order-id="${workOrderId}"]`);
+            if (!input) return;
+            
+            const row = input.closest('tr');
+            if (!row) return;
+            
+            const totalCostCell = row.querySelector('.cost-highlight');
+            const profitCell = row.querySelector('.profit-display');
+            
+            if (!totalCostCell || !profitCell) return;
+            
+            // Extract total cost from the cell
+            const totalCostText = totalCostCell.textContent.replace('$', '').replace(',', '');
+            const totalCost = parseFloat(totalCostText) || 0;
+            const projectCostFloat = parseFloat(projectCost) || 0;
+            
+            // Calculate profit
+            const profit = projectCostFloat - totalCost;
+            const profitPct = projectCostFloat > 0 ? (profit / projectCostFloat * 100) : 0;
+            
+            // Update profit display
+            const color = profit > 0 ? 'green' : (profit < 0 ? 'red' : 'gray');
+            profitCell.style.color = color;
+            profitCell.innerHTML = `$${profit.toFixed(2)}<br><small>(${profitPct.toFixed(1)}%)</small>`;
+        }
+        
+        // Show loading spinner on form submission
+        const filterForm = document.getElementById('filterForm');
+        if (filterForm) {
+            filterForm.addEventListener('submit', function() {
+                document.getElementById('loadingSpinner').style.display = 'block';
+            });
+        }
+        
+        // Show loading spinner on pagination clicks
+        const paginationLinks = document.querySelectorAll('.page-link');
+        paginationLinks.forEach(link => {
+            link.addEventListener('click', function() {
+                document.getElementById('loadingSpinner').style.display = 'block';
+            });
+        });
+    });
+    </script>
+</body>
+</html>
